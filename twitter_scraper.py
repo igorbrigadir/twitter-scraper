@@ -68,9 +68,10 @@ def _next_dates(since_date, until_date, delta_days):
 def scrape(driver, screen_name, since_date, until_date, wait_secs):
     log.info("Scraping %s since %s until %s", screen_name, since_date, until_date)
     
-#    url = "https://twitter.com/search?f=tweets&vertical=default&q={}%20since:{}%20until:{}&src=typd".format(screen_name, since_date.isoformat(), until_date.isoformat())
-    url = "https://twitter.com/search?f=tweets&vertical=default&q={}%20OR%20TXFMDublin%20OR%20url%3Atxfm.ie%20since:{}%20until:{}&src=typd".format(screen_name, since_date.isoformat(), until_date.isoformat())
-
+    # Need to change screen_name to something else, query ... can be anything
+    #url = "https://twitter.com/search?f=tweets&vertical=default&q=...%20since:{}%20until:{}&src=typd".format(since_date.isoformat(), until_date.isoformat())
+    url = "https://twitter.com/search?f=tweets&vertical=default&q={}%20since:{}%20until:{}&src=typd".format(screen_name, since_date.isoformat(), until_date.isoformat())
+    
     log.debug("Getting %s", url)
 
     driver.get(url)
@@ -84,7 +85,6 @@ def scrape(driver, screen_name, since_date, until_date, wait_secs):
         log.debug("Scrolling down %s. Found %s tweets.", scroll_count, last_tweet_count)
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(wait_secs)
-
 
     arc = "scrape/{}/{}_{}_{}.html".format(screen_name, screen_name, since_date.isoformat(), until_date.isoformat())
     with open(arc, 'w') as f:
