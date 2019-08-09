@@ -1,4 +1,3 @@
-from __future__ import print_function
 from selenium import webdriver
 from datetime import date, timedelta
 import time
@@ -6,13 +5,17 @@ import logging
 import argparse
 import getpass
 from builtins import input
+import unidecode
+import re
+import os
 
 log = logging.getLogger(__name__)
 
-def scrape_loop(screen_name, since_date, until_date, delta_days=30, wait_secs=5, username="", password=""):
+
+def scrape_loop(query, since_date, until_date, delta_days=30, wait_secs=5, username="", password=""):
     tweet_ids = set()
 
-    log.info("Scrape Loop %s since %s until %s", screen_name, since_date, until_date)
+    log.info("Scrape Loop %s since %s until %s", query, since_date, until_date)
 
     driver = webdriver.Chrome()
     driver.implicitly_wait(wait_secs)
@@ -20,7 +23,7 @@ def scrape_loop(screen_name, since_date, until_date, delta_days=30, wait_secs=5,
     if username and password:
         try:
             log.info("Attempting to log in as %s", username)
-            driver.get('https://twitter.com/search-home')
+            driver.get('https://twitter.com/explore')
             driver.find_element_by_id("signin-link").click()
             username_field = driver.find_element_by_name("session[username_or_email]")
             password_field = driver.find_element_by_name("session[password]")
@@ -34,16 +37,17 @@ def scrape_loop(screen_name, since_date, until_date, delta_days=30, wait_secs=5,
             pass
 
     for new_since_date, new_until_date in _next_dates(since_date, until_date, delta_days):
+        new_tweet_ids = set()
         try:
-            new_tweet_ids = scrape(driver, screen_name, new_since_date, new_until_date, wait_secs)
+            new_tweet_ids = scrape(driver, query, new_since_date, new_until_date, wait_secs)
 
-            with open(screen_name+".tmp", 'a') as f:
+            with open(slugify(query)+".tmp", 'a') as f:
                 for tweet_id in new_tweet_ids:
                     f.write(tweet_id + '\n')
 
             tweet_ids.update(new_tweet_ids)
         except:
-            log.error("Failed to load q=from:{} since:{} until:{} search results!", screen_name, new_since_date, new_until_date)
+            log.error("Failed to load q={} since:{} until:{} search results!", query, new_since_date, new_until_date)
             pass
         log.info("Found %s tweet ids for a total of %s unique tweet ids", len(new_tweet_ids), len(tweet_ids))
 
@@ -65,12 +69,10 @@ def _next_dates(since_date, until_date, delta_days):
         yield new_since_date, new_until_date
 
 
-def scrape(driver, screen_name, since_date, until_date, wait_secs):
-    log.info("Scraping %s since %s until %s", screen_name, since_date, until_date)
+def scrape(driver, query, since_date, until_date, wait_secs):
+    log.info("Scraping %s since %s until %s", query, since_date, until_date)
     
-    # Need to change screen_name to something else, query ... can be anything
-    #url = "https://twitter.com/search?f=tweets&vertical=default&q=...%20since:{}%20until:{}&src=typd".format(since_date.isoformat(), until_date.isoformat())
-    url = "https://twitter.com/search?f=tweets&vertical=default&q={}%20since:{}%20until:{}&src=typd".format(screen_name, since_date.isoformat(), until_date.isoformat())
+    url = "https://twitter.com/search?q={}%20since%3A{}%20until%3A{}&src=typed_query&f=live".format(query, since_date.isoformat(), until_date.isoformat())
     
     log.debug("Getting %s", url)
 
@@ -86,8 +88,10 @@ def scrape(driver, screen_name, since_date, until_date, wait_secs):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(wait_secs)
 
-    arc = "scrape/{}/{}_{}_{}.html".format(screen_name, screen_name, since_date.isoformat(), until_date.isoformat())
-    with open(arc, 'w') as f:
+    temp_folder = "scrape/{}".format(slugify(query))
+    os.makedirs(temp_folder, exist_ok=True)
+    temp_file = "{}/{}_{}_{}.html".format(temp_folder, slugify(query), since_date.isoformat(), until_date.isoformat())
+    with open(temp_file, 'w') as f:
         f.write(driver.page_source)
 
     time.sleep(1)
@@ -100,14 +104,19 @@ def _to_date(date_str):
     return date(int(date_split[0]), int(date_split[1]), int(date_split[2]))
 
 
+def slugify(query):
+    query = unidecode.unidecode(query).lower()
+    return re.sub(r'[\W_]+', '_', query)
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("screen_name")
-    parser.add_argument("--since", default="2011-04-05", help="Tweets since this date. Default is 2011-04-05.")
+    parser.add_argument("query")
+    parser.add_argument("--since", default=(date.today() - timedelta(days=1)).isoformat(), help="Tweets since this date. Default is 1 day ago")
     parser.add_argument("--until", default=date.today().isoformat(), help="Tweets until this date. Default is today.")
-    parser.add_argument("--delta-days", type=int, default=30, help="Number of days to include in each search.")
-    parser.add_argument("--wait-secs", type=int, default=5, help="Number of seconds to wait between each scroll.")
+    parser.add_argument("--delta-days", type=int, default=1, help="Number of days to include in each search.")
+    parser.add_argument("--wait-secs", type=int, default=3, help="Number of seconds to wait between each scroll.")
     parser.add_argument("--login", action='store_true', help="Attempt log in using your Twitter account.")
     parser.add_argument("--debug", action="store_true")
     parser.set_defaults(login=False,debug=True)
@@ -118,13 +127,13 @@ if __name__ == "__main__":
     logging.getLogger("selenium").setLevel(logging.WARNING)
 
     if (args.login):
-        username = input("Enter Twitter username:")
-        password = getpass.getpass("Enter Twitter password:")
+        username = input("Enter Twitter username: ")
+        password = getpass.getpass("Enter Twitter password: ")
     else:
         username = ""
         password = ""
 
-    main_tweet_ids = scrape_loop(args.screen_name, _to_date(args.since), _to_date(args.until),
+    main_tweet_ids = scrape_loop(args.query, _to_date(args.since), _to_date(args.until),
                                  delta_days=args.delta_days, wait_secs=args.wait_secs,
                                  username=username, password=password)
     for tweet_id in main_tweet_ids:
