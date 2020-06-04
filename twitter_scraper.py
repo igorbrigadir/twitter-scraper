@@ -1,4 +1,6 @@
 from selenium import webdriver
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 from datetime import date, timedelta
 import time
 import logging
@@ -23,14 +25,13 @@ def scrape_loop(query, since_date, until_date, delta_days=30, wait_secs=5, usern
     if username and password:
         try:
             log.info("Attempting to log in as %s", username)
-            driver.get('https://twitter.com/explore')
-            driver.find_element_by_id("signin-link").click()
-            username_field = driver.find_element_by_name("session[username_or_email]")
-            password_field = driver.find_element_by_name("session[password]")
-            username_field.send_keys(username)
-            password_field.send_keys(password)
-            form = driver.find_element_by_css_selector('[data-component="login_callout"]')
-            form.submit()
+            driver.get('https://mobile.twitter.com/explore')
+            driver.find_element_by_xpath("//a[contains(@href,'/login')]").click()
+            type_keys(driver, username, 2)
+            type_keys(driver, Keys.TAB, 1)
+            type_keys(driver, password, 1)
+            type_keys(driver, Keys.ENTER, 1)
+            time.sleep(2)
             log.info("Login Success!")
         except:
             log.error("Failed to log in as %s, trying to continue anyway!", username)
@@ -56,6 +57,12 @@ def scrape_loop(query, since_date, until_date, delta_days=30, wait_secs=5, usern
 
     return tweet_ids
 
+def type_keys(driver, keys, wait_secs=3):
+        log.debug("Typing %s", keys)
+        time.sleep(wait_secs)
+        actions = ActionChains(driver)
+        actions.send_keys(keys)
+        actions.perform()
 
 def _next_dates(since_date, until_date, delta_days):
     last_date = False
@@ -72,7 +79,7 @@ def _next_dates(since_date, until_date, delta_days):
 def scrape(driver, query, since_date, until_date, wait_secs):
     log.info("Scraping %s since %s until %s", query, since_date, until_date)
     
-    url = "https://twitter.com/search?q={}%20since%3A{}%20until%3A{}&src=typed_query&f=live".format(query, since_date.isoformat(), until_date.isoformat())
+    url = "https://mobile.twitter.com/search?q={}%20since%3A{}%20until%3A{}&src=typed_query&f=live".format(query, since_date.isoformat(), until_date.isoformat())
     
     log.debug("Getting %s", url)
 
@@ -81,9 +88,9 @@ def scrape(driver, query, since_date, until_date, wait_secs):
     scroll_count = 0
     last_tweet_count = 0
     
-    while last_tweet_count != len(driver.find_elements_by_class_name("original-tweet")):
+    while last_tweet_count != len(driver.find_elements_by_xpath("//a[contains(@href,'status')]")):
         scroll_count += 1
-        last_tweet_count = len(driver.find_elements_by_class_name("original-tweet"))
+        last_tweet_count = len(driver.find_elements_by_xpath("//a[contains(@href,'status')]"))
         log.debug("Scrolling down %s. Found %s tweets.", scroll_count, last_tweet_count)
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(wait_secs)
@@ -96,7 +103,7 @@ def scrape(driver, query, since_date, until_date, wait_secs):
 
     time.sleep(1)
 
-    return set([e.get_attribute("data-tweet-id") for e in driver.find_elements_by_class_name("original-tweet")])
+    return set([e.get_attribute("href").split('/')[-1] for e in driver.find_elements_by_xpath("//a[contains(@href,'status')]")])
 
 
 def _to_date(date_str):
